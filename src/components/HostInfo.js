@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Radio,
   Icon,
@@ -9,35 +9,107 @@ import {
   Divider,
 } from "semantic-ui-react";
 import "../stylesheets/HostInfo.css";
+import { Log } from "../services/Log";
 
-function HostInfo() {
-  // This state is just to show how the dropdown component works.
-  // Options have to be formatted in this way (array of objects with keys of: key, text, value)
-  // Value has to match the value in the object to render the right text.
+function HostInfo( {hosts, selectedHost, setSelectedHost, handleAssign, areas, logs, setLogs }) {
 
-  // IMPORTANT: But whether it should be stateful or not is entirely up to you. Change this component however you like.
+  const {id, firstName, lastName, active, imageUrl, gender, area, authorized} = selectedHost
+  const [value, setValue] = useState('');
+  const [comissioned, setComissioned] = useState(active)
+
+  console.log(active)
+  
+
+  useEffect(() => {
+    setValue(area)
+  }, [selectedHost]) /// Ahhhhhhh, everytime the selectedHost is changed, I want to set the value. The reason why it was not updating before is because while the information passed in was changing, the state for the dropdown value was not.
+
   const [options] = useState([
-    { key: "some_area", text: "Some Area", value: "some_area" },
-    { key: "another_area", text: "Another Area", value: "another_area" },
+    { key: "high_plains", text: 'High Plains', value: "high_plains" },
+    { key: "lowlands", text: "Lowlands", value: "lowlands" },
+    { key: "pariah", text: "Pariah", value: "pariah" },
+    { key: "python_pass", text: "Python Pass", value: "python_pass" },
+    { key: "badlands", text: "Badlands", value: "badlands" },
   ]);
 
-  const [value] = useState("some_area");
 
   function handleOptionChange(e, { value }) {
-    // the 'value' attribute is given via Semantic's Dropdown component.
-    // Put a debugger or console.log in here and see what the "value" variable is when you pass in different options.
-    // See the Semantic docs for more info: https://react.semantic-ui.com/modules/dropdown/#usage-controlled
-  }
+
+    const limit = areas.find(area => area.name === value).limit // returns integer of area that was selected
+    const amountHosts = hosts.filter(host => host.area === value).filter(host => host.active).length
+
+    console.log('limit ', limit)
+    console.log('current number of hosts ', amountHosts)
+
+    let areaName = value.replaceAll('_', ' ')
+    areaName = areaName.split(' ')
+    areaName = areaName.map(letter => (letter.charAt(0).toUpperCase() + letter.slice(1)))
+
+    if (amountHosts < limit) { 
+      fetch(`http://localhost:3001/hosts/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type' : 'application/json'
+      },
+      body: JSON.stringify({
+        ...selectedHost, area: value
+      })
+    })
+      .then(response => response.json())
+      .then(change => setSelectedHost(change)) // Need this so the details component is getting up to date information 
+      .then(() => handleAssign()) // Toggle re-rerender of map
+      .then(() => setValue(value)) // sets form value to area selected
+      .then(() => setLogs([Log.notify(`${firstName} has been added to ${areaName}`), ...logs]))
+    } else {
+      setLogs([Log.error(`Too many hosts. Cannot add ${firstName} to ${areaName}`), ...logs])
+    }
+  } 
 
   function handleRadioChange() {
-    console.log("The radio button fired");
+
+    const limit = areas.find(element => element.name === area).limit // retrives limit for the target area
+    const amountHosts = hosts.filter(host => host.area === area).filter(host => host.active).length // rettrieves number of hosts in target area
+
+    console.log('limit ', limit)
+    console.log('current number of hosts ', amountHosts)
+
+    const areaName = areas.find(element => element.name === area).name.split(' ').map(letter => (letter.charAt(0).toUpperCase() + letter.slice(1)))
+
+    if ((amountHosts < limit || active)) { // Will only run if the limit not exceeded, of if the selected host is active (meaning that they can be removed)
+      fetch(`http://localhost:3001/hosts/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type' : 'application/json'
+      },
+      body: JSON.stringify({
+        ...selectedHost, active: !active
+      })
+    })
+      .then(response => response.json())
+      .then(change => {
+        setSelectedHost(change)
+        console.log(change)
+        if (change.active === false) {
+          setLogs([Log.notify(`Decomissioned ${firstName}`), ...logs])
+        } else if (change.active === true) {
+          setLogs([Log.warn(`Actiavted ${firstName}`)])
+        }
+      }) // Need this so the details component is getting up to date information 
+      .then(() => handleAssign()) // Toggle re-rerender of map
+      .then(() => setComissioned(!active)) // changes value of radio
+      // .then(() => setLogs([Log.notify(`${firstName} has been added to ${areaName}`), ...logs]))
+    } else {
+      setLogs([Log.error(`Too many hosts. Cannot add ${firstName} to ${areaName}`), ...logs])
+    }
   }
+
+  
 
   return (
     <Grid>
       <Grid.Column width={6}>
         <Image
-          src={/* pass in the right image here */ ""}
+          src={imageUrl}
           floated="left"
           size="small"
           className="hostImg"
@@ -47,16 +119,13 @@ function HostInfo() {
         <Card>
           <Card.Content>
             <Card.Header>
-              {"Bob"} | {true ? <Icon name="man" /> : <Icon name="woman" />}
-              {/* Think about how the above should work to conditionally render the right First Name and the right gender Icon */}
+              {firstName} | {gender === 'Male' ? <Icon name="man" /> : <Icon name="woman" />}
             </Card.Header>
             <Card.Meta>
-              {/* Sometimes the label should take "Decommissioned". How are we going to conditionally render that? */}
-              {/* Checked takes a boolean and determines what position the switch is in. Should it always be true? */}
               <Radio
                 onChange={handleRadioChange}
-                label={"Active"}
-                checked={true}
+                label={active ? "Active" : "Decomissioned"}
+                checked={active}
                 slider
               />
             </Card.Meta>
